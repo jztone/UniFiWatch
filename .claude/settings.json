@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile watch.py status.py stats.py notify.py)",
+      "Bash(bash -n install.sh)",
+      "Bash(bash -n run.sh.template)",
+      "Bash(bash -n tools/test_notify.sh)",
+      "Bash(bash tools/test_notify.sh)",
+      "Bash(plutil -lint com.jztone.unifiwatch.plist)",
+      "Bash(python3 status.py)"
+    ]
+  }
+}

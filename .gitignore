@@ -1,0 +1,28 @@
+# Local, user-specific config — holds the UniFi API key. Never commit it.
+config.local.json
+
+# Claude Code: .claude/settings.json is shared and tracked; the .local variant
+# is where per-user permission approvals accumulate, so keep it out.
+.claude/settings.local.json
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# State and events live outside the repo by default (~/UniFiWatch); guard
+# against a config pointing the root inside it.
+UniFiWatch/
+state.json
+events.jsonl
+pending.json
+notified.json
+metrics/

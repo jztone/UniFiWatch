@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent template for UniFiWatch.
+  Placeholders (__WRAPPER__, __WORKDIR__, __LOG_DIR__) are filled in by
+  install.sh with absolute paths. Do not load this template directly.
+
+  ProgramArguments points at the LOCAL run.sh wrapper (not watch.py in the
+  repo) and the log paths are LOCAL, because the repo lives on a CloudStorage
+  mount that a launchd job is denied access to. See run.sh.template.
+
+  This job is deliberately self-contained: it depends on no other agent, holds
+  no shared resource, and keeps polling while other scheduled jobs on this
+  machine are stopped or running.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jztone.unifiwatch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__WRAPPER__</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__WORKDIR__</string>
+
+    <!-- Ensure python3 resolves under launchd, which does not source a shell. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Poll every five minutes. StartInterval (not StartCalendarInterval):
+         this is a cadence, not an appointment. While the Mac is asleep no poll
+         runs; launchd fires once on wake rather than replaying the misses,
+         which is what we want — the poller compares against the last state it
+         saw, so a gap costs resolution, not correctness. -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <!-- The first poll comes 300s after load; install.sh prints the kickstart
+         command for anyone who wants one immediately. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/launchd.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,82 @@
+#!/bin/bash
+#
+# UniFiWatch launchd wrapper.
+#
+# Rendered by install.sh to a LOCAL path (~/Library/Application Support/…),
+# next to LOCAL copies of watch.py, notify.py and config.local.json — DO NOT
+# edit any of the installed files by hand; edit the repo copies and re-run
+# install.sh.
+#
+# Why this exists: the repo lives on the ProtonDrive CloudStorage mount, which
+# a launchd job cannot read. macOS denies the job access to the provider's
+# files —
+#   python3: can't open file '…/UniFiWatch/watch.py': [Errno 1] Operation not permitted
+# — even though an interactive shell reads the same path fine, and the mount is
+# often unhydrated after a deferred wake. So nothing on the scheduled path
+# touches the mount: this wrapper, watch.py, its config and the logs are all on
+# local disk, and the repo is needed only when running install.sh.
+#
+set -u
+
+PYTHON="__PYTHON__"
+WATCH_PY="__WATCH_PY__"
+LOG="__LAUNCHD_LOG_DIR__/wrapper.log"
+
+# Keep the app log on local disk too: flushing it on a CloudStorage mount
+# intermittently raises EDEADLK ("Resource deadlock avoided").
+export UNIFIWATCH_LOG_DIR="__LAUNCHD_LOG_DIR__"
+
+log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG"; }
+
+# No mount-wait: every path used below is on local disk. A missing file now
+# means the install is broken, not that a provider is still hydrating.
+if [ ! -f "$WATCH_PY" ]; then
+    log "watch.py missing at '$WATCH_PY' — re-run install.sh"
+    exit 78  # EX_CONFIG — a real config error, not transient
+fi
+
+# watch.py reads config.local.json from ITS OWN directory. install.sh copies the
+# repo's config next to the installed script; without it the poll would run with
+# no host, no key and no site id, and exit 1 every five minutes.
+if [ ! -f "$(dirname "$WATCH_PY")/config.local.json" ]; then
+    log "config.local.json missing beside '$WATCH_PY' — re-run install.sh"
+    exit 78
+fi
+
+log "handing off to watch.py"
+# No exec: a step follows the poll. The wrapper stays resident for the few
+# seconds watch.py takes, which is what lets it capture the exit code below.
+"$PYTHON" "$WATCH_PY"
+WATCH_RC=$?
+log "watch.py exited $WATCH_RC"
+
+# Derived, not templated. notify.py has to sit beside watch.py regardless —
+# Python puts a script's own directory first on sys.path, and that is what makes
+# its `import watch` find the installed copy — so a __NOTIFY_PY__ placeholder
+# would only add a fourth place for install.sh's file list to drift out of sync,
+# and a stale one would point at a notify.py whose import resolves to a
+# different watch.py, or to none.
+NOTIFY_PY="$(dirname "$WATCH_PY")/notify.py"
+
+if [ -f "$NOTIFY_PY" ]; then
+    # Run it whatever the poll returned. An unreachable console (1) or a
+    # rejected key (2) leaves pending.json exactly as it was, and a WAN outage
+    # recorded by the run above is when a wake matters most. notify.py logs to
+    # stderr, which launchd captures in launchd.err.log.
+    "$PYTHON" "$NOTIFY_PY"
+    NOTIFY_RC=$?
+    [ "$NOTIFY_RC" -eq 0 ] || log "notify.py exited $NOTIFY_RC"
+else
+    # Degrade, do not block: exit 78 here would trade a working monitor for a
+    # missing message. The poll above already wrote state, events and
+    # pending.json, and a consumer reading those directly is unaffected. The two
+    # preflights at the top are a different case — without watch.py or its
+    # config the poll produces nothing at all, so there is nothing to protect.
+    log "notify.py missing at '$NOTIFY_PY' — re-run install.sh; no agent wake"
+fi
+
+# Exit with the poll's code, not the notifier's. launchd records this, and
+# watch.py's codes are documented (0 ok · 1 partial · 2 auth); folding a
+# notifier failure into them would make the poller's health unreadable. A
+# notify.py failure is loud in wrapper.log and launchd.err.log instead.
+exit "$WATCH_RC"
